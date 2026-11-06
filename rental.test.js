@@ -30,3 +30,60 @@ test('Private rental catalog CRUD checks admin access and persists through Supab
   assert.equal((await call('/api/rentals/'+car.id,'DELETE')).status,200);assert.equal(rows.length,1);
   assert.equal((await call('/api/rentals/'+car.id)).status,404);
 });
+
+test('Missing runtime configuration serves the bundled read-only preview without contacting Supabase',async()=>{
+  const {handleApi}=await import('./rentcar-site/worker/api.mjs');
+  const snapshot=require('./rentcar-site/worker/rental-catalog.json');
+  let fetches=0;
+  const unexpectedFetch=async()=>{fetches++;throw Error('Preview must not contact Supabase');};
+  for(const config of [{},{...env,SUPABASE_URL:''},{...env,SUPABASE_SECRET_KEY:''},{...env,SUPABASE_PUBLISHABLE_KEY:''}]){
+    const response=await handleApi(new Request('https://site.test/api/rentals'),config,unexpectedFetch);
+    assert.equal(response.status,200);
+    assert.equal(response.headers.get('X-Catalog-Mode'),'preview');
+    const cars=await response.json();assert.equal(cars.length,49);assert.deepEqual(cars,snapshot);
+  }
+  assert.equal(fetches,0);
+});
+
+test('The missing-configuration preview supports known rental IDs and returns 404 for missing models',async()=>{
+  const {handleApi}=await import('./rentcar-site/worker/api.mjs');
+  const snapshot=require('./rentcar-site/worker/rental-catalog.json');
+  let fetches=0;
+  const unexpectedFetch=async()=>{fetches++;throw Error('Preview must not contact Supabase');};
+  const car=snapshot[0];
+  const response=await handleApi(new Request('https://site.test/api/rentals/'+car.id),{},unexpectedFetch);
+  assert.equal(response.status,200);assert.equal(response.headers.get('X-Catalog-Mode'),'preview');assert.deepEqual(await response.json(),car);
+  const missing=await handleApi(new Request('https://site.test/api/rentals/999999999'),{},unexpectedFetch);
+  assert.equal(missing.status,404);assert.ok((await missing.json()).error);
+  assert.equal(fetches,0);
+});
+
+test('A preview never enables writes, sign-in or booking when runtime configuration is missing',async()=>{
+  const {handleApi}=await import('./rentcar-site/worker/api.mjs');
+  let fetches=0;
+  const unexpectedFetch=async()=>{fetches++;throw Error('Unconfigured actions must not call Supabase');};
+  for(const [path,method] of [['/api/rentals','POST'],['/api/rentals/293','PUT'],['/api/rentals/293','DELETE'],['/api/auth/login','POST'],['/api/auth/register','POST'],['/api/bookings','POST'],['/api/bookings','GET'],['/api/me','GET'],['/api/admin/bookings','GET']]){
+    const response=await handleApi(new Request('https://site.test'+path,{method,headers:{'Content-Type':'application/json',Authorization:'Bearer test-token'},...(method==='GET'?{}:{body:'{}'})}),{},unexpectedFetch);
+    assert.equal(response.status,503,path+' '+method);
+    assert.ok((await response.json()).error);
+  }
+  assert.equal(fetches,0);
+});
+
+test('A configured live catalog preserves an intentionally empty inventory instead of restoring the snapshot',async()=>{
+  const {handleApi}=await import('./rentcar-site/worker/api.mjs');
+  let fetches=0;
+  const response=await handleApi(new Request('https://site.test/api/rentals'),env,async()=>{fetches++;return Response.json([]);});
+  assert.equal(response.status,200);assert.equal(response.headers.get('X-Catalog-Mode'),'live');
+  assert.deepEqual(await response.json(),[]);assert.equal(fetches,1);
+});
+
+test('Configured storage failures remain errors and do not silently expose a stale preview',async()=>{
+  const {handleApi}=await import('./rentcar-site/worker/api.mjs');
+  for(const fail of [async()=>Response.json({message:'Storage temporarily unavailable'},{status:500}),async()=>{throw Error('Network unavailable');}]){
+    const response=await handleApi(new Request('https://site.test/api/rentals'),env,fail);
+    assert.equal(response.status,502);
+    assert.notEqual(response.headers.get('X-Catalog-Mode'),'preview');
+    const result=await response.json();assert.ok(!Array.isArray(result));assert.ok(result.error);
+  }
+});

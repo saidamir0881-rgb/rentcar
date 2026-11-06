@@ -1,4 +1,5 @@
 import {handleBookingApi} from './bookings.mjs';
+import {publicRentalCatalog} from './public-catalog.mjs';
 export const carFields = {brand:'string',is_new:'boolean',price:'number',year:'integer',model:'string'};
 export function isAdult(value, today = new Date()) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -28,6 +29,13 @@ export async function handleApi(request,env,fetchImpl=fetch) {
   const secret=env.SUPABASE_SECRET_KEY, key=env.SUPABASE_PUBLISHABLE_KEY;
   try {
     if(path==='/api/contact'&&method==='GET') return json({email:env.CONTACT_EMAIL||null});
+    // The public CRC snapshot remains browseable before deployment secrets are set.
+    // Only missing configuration enables preview; a valid empty live catalog is respected.
+    if((!env.SUPABASE_URL||!secret||!key)&&method==='GET'&&/^\/api\/rentals(?:\/[1-9]\d*)?$/.test(path)){
+      const id=path.split('/')[3];
+      const car=id?publicRentalCatalog.find(c=>String(c.id)===id):null;
+      return json(id?(car||{error:'Avtomobil topilmadi'}):publicRentalCatalog,id&&!car?404:200,{'X-Catalog-Mode':'preview'});
+    }
     if(!env.SUPABASE_URL||!secret||!key) fail('Serverning Supabase sozlamalari to‘liq emas',503);
     if(['POST','PUT','DELETE'].includes(method)&&request.headers.get('origin')&&request.headers.get('origin')!==url.origin) fail('Boshqa saytdan so‘rov rad etildi',403);
     async function upstream(path,{method='GET',body,token,admin=true,prefer='return=representation'}={}) {
@@ -131,8 +139,8 @@ export async function handleApi(request,env,fetchImpl=fetch) {
       const rows=await upstream(storagePath);
       if(!Array.isArray(rows)) fail('Ijara katalogi javobida xato',502);
       if(method==='GET') {
-        if(id){const car=rows.find(c=>String(c.id)===id);if(!car)fail('Avtomobil topilmadi',404);return finish(car);}
-        return finish(rows);
+        if(id){const car=rows.find(c=>String(c.id)===id);if(!car)fail('Avtomobil topilmadi',404);const response=finish(car);response.headers.set('X-Catalog-Mode','live');return response;}
+        const response=finish(rows);response.headers.set('X-Catalog-Mode','live');return response;
       }
       const index=id?rows.findIndex(c=>String(c.id)===id):-1;
       if(id&&index<0)fail('Avtomobil topilmadi',404);

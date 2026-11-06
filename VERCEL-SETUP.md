@@ -19,3 +19,7 @@ Redeploy after changing environment values. A connected GitHub repository normal
 Check `/` and `/admin` for HTML, `/api/rentals` for the catalog and `/api/me` for `401` when signed out. A `503` response mentioning Supabase settings means the three environment variables have not been configured; it is different from a `FUNCTION_INVOCATION_FAILED` startup failure.
 
 Reference: https://vercel.com/docs/frameworks/backend/express
+
+## Public catalog preview
+
+When the Supabase runtime settings are missing, GET /api/rentals returns the bundled49-car CRC snapshot in read-only preview mode. The site labels online booking as unavailable. Authentication, private data and all writes remain disabled until the environment variables are configured. A configured live empty catalog stays empty; storage errors do not silently restore the snapshot.

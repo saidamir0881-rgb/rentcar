@@ -1,7 +1,8 @@
 import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
 const root=new URL('../',import.meta.url);
 const bookingApi=await readFile(new URL('worker/bookings.mjs',root),'utf8');
-const api=bookingApi+'\n'+(await readFile(new URL('worker/api.mjs',root),'utf8')).replace("import {handleBookingApi} from './bookings.mjs';",'');
+const publicCatalog=await readFile(new URL('worker/public-catalog.mjs',root),'utf8');
+const api=bookingApi+'\n'+publicCatalog+'\n'+(await readFile(new URL('worker/api.mjs',root),'utf8')).replace("import {handleBookingApi} from './bookings.mjs';",'').replace("import {publicRentalCatalog} from './public-catalog.mjs';",'');
 const assets=JSON.parse(await readFile(new URL('worker/car-images.json',root),'utf8'));
 for(const [path,file,type] of [['/','page.html','text/html'],['/admin','page.html','text/html'],['/style.css','style.css','text/css'],['/rental.css','rental.css','text/css'],['/app.js','app.js','text/javascript']]) assets[path]={content:await readFile(new URL('worker/'+file,root),'utf8'),type};
 const worker=api+'\nconst assets='+JSON.stringify(assets)+';\nexport default {async fetch(request,env){const path=new URL(request.url).pathname;const asset=assets[path];if(asset && request.method==="GET")return new Response(asset.base64?Uint8Array.from(atob(asset.base64),c=>c.charCodeAt(0)):asset.content,{headers:{"Content-Type":asset.type+(asset.base64?"":"; charset=utf-8"),"X-Content-Type-Options":"nosniff","Referrer-Policy":"strict-origin-when-cross-origin","Content-Security-Policy":"default-src \'self\'; img-src \'self\' https:; style-src \'self\' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src \'self\'; connect-src \'self\'; frame-ancestors \'none\'; form-action \'self\'; base-uri \'self\'"}});return handleApi(request,env);}};\n';
