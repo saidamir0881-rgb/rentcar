@@ -41,3 +41,7 @@ Eski /cars API va Postman collection mashqlar uchun saqlangan. POST/PUT/DELETE u
 Batafsil: [RENTCAR-SETUP.md](RENTCAR-SETUP.md), [BOOKING-SETUP.md](BOOKING-SETUP.md).
 
 Katalog manbasi: https://crc.uz/category/auto/ . Tariflar 2026-11-05 kuni olingan va avtomatik yangilanmaydi.
+
+## Vercel
+
+Deploy from the repository root with the Express preset and Node.js 22.x. Set SUPABASE_URL, SUPABASE_SECRET_KEY and SUPABASE_PUBLISHABLE_KEY as Vercel environment variables. See [VERCEL-SETUP.md](VERCEL-SETUP.md).

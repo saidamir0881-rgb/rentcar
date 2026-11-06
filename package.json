@@ -16,5 +16,8 @@
     "@supabase/server": "^1.9.2",
     "express": "^5.3.0",
     "nodemon": "^3.1.14"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }

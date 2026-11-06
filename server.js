@@ -1,5 +1,7 @@
 const express = require('express');
-try { process.loadEnvFile(); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+if (!process.env.VERCEL && typeof process.loadEnvFile === 'function') {
+  try { process.loadEnvFile(); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+}
 const fields = {brand:'string',is_new:'boolean',price:'number',year:'integer',model:'string'};
 function validate(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return ['JSON obyekt yuboring'];
@@ -15,13 +17,16 @@ function validate(body) {
 }
 function createApp({fetchImpl = fetch, env = process.env} = {}) {
   const app = express();
+  app.set('trust proxy', env.VERCEL ? 1 : false);
   const path = require('node:path');
   const publicDir = path.join(__dirname,'rentcar-site','worker');
   app.use(express.json({limit:'100kb'}));
-  app.get(['/', '/admin'], (req,res)=>res.sendFile(path.join(publicDir,'page.html')));
-  app.get('/style.css',(req,res)=>res.sendFile(path.join(publicDir,'style.css')));
-  app.get('/rental.css',(req,res)=>res.sendFile(path.join(publicDir,'rental.css')));
-  app.get('/app.js',(req,res)=>res.sendFile(path.join(publicDir,'app.js')));
+  // These routes serve only the named site files, including checkouts in dot directories.
+  const sendSiteFile=(res,name)=>res.sendFile(path.join(publicDir,name),{dotfiles:'allow'});
+  app.get(['/', '/admin'], (req,res)=>sendSiteFile(res,'page.html'));
+  app.get('/style.css',(req,res)=>sendSiteFile(res,'style.css'));
+  app.get('/rental.css',(req,res)=>sendSiteFile(res,'rental.css'));
+  app.get('/app.js',(req,res)=>sendSiteFile(res,'app.js'));
   app.get('/images/:name',(req,res)=>{
     const image=require('./rentcar-site/worker/car-images.json')['/images/'+req.params.name];
     if(!image)return res.status(404).end();
@@ -33,7 +38,7 @@ function createApp({fetchImpl = fetch, env = process.env} = {}) {
       const {handleApi} = await import('./rentcar-site/worker/api.mjs');
       const headers = new Headers();
       for(const [name,value] of Object.entries(req.headers)) if(value) headers.set(name,Array.isArray(value)?value.join(', '):value);
-      const request = new Request('http://'+req.get('host')+req.originalUrl,{method:req.method,headers,...(!['GET','HEAD'].includes(req.method)&&req.body?{body:JSON.stringify(req.body)}:{})});
+      const request = new Request(req.protocol+'://'+req.get('host')+req.originalUrl,{method:req.method,headers,...(!['GET','HEAD'].includes(req.method)&&req.body?{body:JSON.stringify(req.body)}:{})});
       const response=await handleApi(request,env,fetchImpl);
       res.status(response.status);
       for(const [key,value] of response.headers) if(key!=='set-cookie') res.setHeader(key,value);
@@ -44,6 +49,10 @@ function createApp({fetchImpl = fetch, env = process.env} = {}) {
   app.use((e,req,res,next)=>res.status(e.type==='entity.parse.failed'?400:e.status||502).json({error:e.type==='entity.parse.failed'?'JSON formati noto?g?ri':'Server so?rovida xato'}));
   return app;
 }
-if(require.main===module) createApp().listen(process.env.PORT||3000,'127.0.0.1',()=>console.log(`Server: http://localhost:${process.env.PORT||3000}`));
-module.exports={createApp,fields,validate};
+const app = createApp();
+if(require.main===module && !process.env.VERCEL) app.listen(process.env.PORT||3000,'127.0.0.1',()=>console.log(`Server: http://localhost:${process.env.PORT||3000}`));
+module.exports = app;
+module.exports.createApp = createApp;
+module.exports.fields = fields;
+module.exports.validate = validate;
 
